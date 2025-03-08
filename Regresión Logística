@@ -11,3 +11,20 @@ modelo <- glm(am ~ mpg + hp + wt, data = mtcars, family = binomial)
 
 # Resumen del modelo
 summary(modelo)
+# Calcular los odds ratios y los intervalos de confianza
+exp(cbind(OR = coef(modelo), confint(modelo)))
+
+# Predicciones con probabilidades
+predicciones <- predict(modelo, type = "response")
+
+# Ver las primeras predicciones
+head(predicciones)
+
+# Convertir a clasificación (umbral 0.5)
+pred_clase <- ifelse(predicciones > 0.5, "Manual", "Automatic")
+
+# Crear tabla de comparación
+table(Predicho = pred_clase, Real = mtcars$am)
+
+library(caret)
+confusionMatrix(factor(pred_clase, levels = c("Automatic", "Manual")), mtcars$am)
