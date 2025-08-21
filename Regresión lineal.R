@@ -10,9 +10,9 @@ summary(modelo)
 datos <- read.csv(file.choose())
 datos
 library(ggplot2)
-ggplot(datos,aes(x=Prima,y=Ln_AMXL))+geom_point()
-modelo<- lm(Ln_AMXL~Prima, data=datos)
-ggplot(datos,aes(x=Prima,y=Ln_AMXL))+geom_point()+geom_smooth(method=lm,se=FALSE)
+ggplot(datos,aes(x=LNNASDAQ,y=LNNTFLX))+geom_point()
+ggplot(datos,aes(x=LNNASDAQ,y=LNNTFLX))+geom_point()+geom_smooth(method=lm,se=FALSE)
+modelo<- lm(LNNTFLX~LNNASDAQ, data=datos)
 summary(modelo)
 
 # Homoscedasticidad y Autocorrelacion
