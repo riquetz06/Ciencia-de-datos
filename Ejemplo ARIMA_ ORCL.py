@@ -47,3 +47,50 @@ plt.show()
 # Convertir en DataFrame
 df_pred = pd.DataFrame({'Predicción': pred}, index=fechas_pred)
 print(df_pred)
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+import statsmodels.api as sm
+from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+from statsmodels.stats.diagnostic import het_arch, acorr_ljungbox, normal_ad
+import scipy.stats as stats
+import numpy as np
+
+# --- Supongo que tu resultado está en una variable "resultado"
+residuos = resultado.resid
+
+# --- 1. Gráfico de residuos
+plt.figure(figsize=(12,4))
+plt.plot(residuos, color="black")
+plt.title("Residuos del modelo ARIMA(2,1,2)")
+plt.show()
+
+# --- 2. ACF y PACF de residuos
+fig, ax = plt.subplots(1,2,figsize=(12,4))
+plot_acf(residuos, ax=ax[0], lags=30)
+plot_pacf(residuos, ax=ax[1], lags=30)
+plt.show()
+
+# --- 3. Histograma y QQ-plot
+fig, ax = plt.subplots(1,2,figsize=(12,4))
+sns.histplot(residuos, bins=20, kde=True, ax=ax[0], color="blue")
+ax[0].set_title("Histograma de residuos")
+sm.qqplot(residuos, line="s", ax=ax[1])
+ax[1].set_title("QQ-plot de residuos")
+plt.show()
+
+# --- 4. Pruebas estadísticas ---
+# Normalidad (Anderson-Darling)
+ad_stat, ad_p = normal_ad(residuos)
+print(f"Anderson-Darling test p-value: {ad_p:.4f}")
+
+# Ljung-Box (autocorrelación)
+lb = acorr_ljungbox(residuos, lags=[10], return_df=True)
+print("\nLjung-Box test (lag=10):")
+print(lb)
+
+# ARCH test (heteroscedasticidad)
+arch_test = het_arch(residuos)
+print("\nARCH test:")
+print(f"LM Stat = {arch_test[0]:.4f}, p-value = {arch_test[1]:.4f}")
+
