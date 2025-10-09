@@ -1,0 +1,103 @@
+# ============================================
+# GLM - Diagnósticos completos en Python
+# ============================================
+
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import statsmodels.api as sm
+from statsmodels.stats.diagnostic import het_breuschpagan
+from statsmodels.stats.stattools import durbin_watson
+from scipy.stats import jarque_bera, kstest, norm
+
+# --------------------------------------------
+# 1. Cargar datos
+# --------------------------------------------
+ruta = input("Ruta de tu archivo CSV: ")
+datos = pd.read_csv(ruta)
+print(datos.head())
+
+# --------------------------------------------
+# Función auxiliar para diagnósticos
+# --------------------------------------------
+def diagnosticos_glm(modelo, nombre):
+    res = modelo.resid_response
+    fit = modelo.fittedvalues
+    print(f"\n==== Diagnóstico: {nombre} ====")
+    sns.scatterplot(x=fit, y=res)
+    plt.axhline(0, color='red')
+    plt.title(f"Residuos vs Ajustados ({nombre})")
+    plt.show()
+    
+    if nombre.lower() == "gaussiano":
+        # Homocedasticidad
+        bp = het_breuschpagan(res, modelo.model.exog)
+        print("Breusch–Pagan p-value:", bp[1])
+        
+        # Autocorrelación
+        print("Durbin–Watson:", durbin_watson(res))
+        
+        # Normalidad
+        sm.qqplot(res, line='s')
+        plt.title("Q-Q Plot")
+        plt.show()
+        jb = jarque_bera(res)
+        ks = kstest((res-res.mean())/res.std(), 'norm')
+        print("Jarque–Bera p:", jb.pvalue, "| KS p:", ks.pvalue)
+    print()
+
+# --------------------------------------------
+# 2. Modelos GLM
+# --------------------------------------------
+X = sm.add_constant(datos['x'])
+y = datos['y']
+
+# Gaussiano
+modelo_gauss = sm.GLM(y, X, family=sm.families.Gaussian()).fit()
+print(modelo_gauss.summary())
+sns.regplot(x='x', y='y', data=datos, line_kws={'color':'red'})
+plt.title("Regresión Lineal (Gaussiana)")
+plt.show()
+diagnosticos_glm(modelo_gauss, "Gaussiano")
+
+# Logístico
+modelo_logit = sm.GLM(y, X, family=sm.families.Binomial()).fit()
+print(modelo_logit.summary())
+datos['pred_logit'] = modelo_logit.fittedvalues
+sns.scatterplot(x='x', y='y', data=datos)
+sns.lineplot(x='x', y='pred_logit', color='red')
+plt.title("Regresión Logística")
+plt.show()
+diagnosticos_glm(modelo_logit, "Logístico")
+
+# Poisson
+modelo_pois = sm.GLM(y, X, family=sm.families.Poisson()).fit()
+print(modelo_pois.summary())
+datos['pred_pois'] = modelo_pois.fittedvalues
+sns.scatterplot(x='x', y='y', data=datos)
+sns.lineplot(x='x', y='pred_pois', color='red')
+plt.title("Regresión Poisson")
+plt.show()
+diagnosticos_glm(modelo_pois, "Poisson")
+
+# Gamma
+modelo_gamma = sm.GLM(y, X, family=sm.families.Gamma(sm.families.links.log())).fit()
+print(modelo_gamma.summary())
+datos['pred_gamma'] = modelo_gamma.fittedvalues
+sns.scatterplot(x='x', y='y', data=datos)
+sns.lineplot(x='x', y='pred_gamma', color='red')
+plt.title("Regresión Gamma")
+plt.show()
+diagnosticos_glm(modelo_gamma, "Gamma")
+
+# Binomial Negativa
+modelo_nb = sm.GLM(y, X, family=sm.families.NegativeBinomial()).fit()
+print(modelo_nb.summary())
+datos['pred_nb'] = modelo_nb.fittedvalues
+sns.scatterplot(x='x', y='y', data=datos)
+sns.lineplot(x='x', y='pred_nb', color='red')
+plt.title("Regresión Binomial Negativa")
+plt.show()
+diagnosticos_glm(modelo_nb, "Binomial Negativa")
+
+print("✅ Diagnóstico GLM completo finalizado.")
