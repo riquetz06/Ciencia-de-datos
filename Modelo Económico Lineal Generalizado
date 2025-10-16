@@ -1,0 +1,48 @@
+import pandas as pd
+import numpy as np
+
+# Fijamos semilla para reproducibilidad
+np.random.seed(123)
+
+# Simulamos datos macroeconómicos (n=100 trimestres)
+n = 100
+df = pd.DataFrame({
+    "tasa_desempleo": np.random.uniform(3, 12, n),      # % de desempleo
+    "inflacion": np.random.uniform(1, 8, n),            # % anual
+    "crecimiento_PIB": np.random.normal(2, 1, n),       # % trimestral
+})
+
+# Generamos la variable dependiente: tasa de morosidad (proporción entre 0 y 1)
+# Usamos una función logística para simularla
+log_odds = -2 + 0.25*df["tasa_desempleo"] + 0.15*df["inflacion"] - 0.30*df["crecimiento_PIB"]
+prob = 1 / (1 + np.exp(-log_odds))
+df["morosidad"] = prob + np.random.normal(0, 0.05, n)
+df["morosidad"] = df["morosidad"].clip(0, 1)
+
+df.head()
+
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+
+# Modelo GLM con familia binomial (logit link)
+modelo = smf.glm(
+    formula="morosidad ~ tasa_desempleo + inflacion + crecimiento_PIB",
+    data=df,
+    family=sm.families.Binomial()
+).fit()
+
+print(modelo.summary())
+
+import matplotlib.pyplot as plt
+
+# Predicciones del modelo
+df["pred_morosidad"] = modelo.predict(df)
+
+plt.scatter(df["tasa_desempleo"], df["morosidad"], label="Datos reales")
+plt.plot(df["tasa_desempleo"], df["pred_morosidad"], color="red", label="Predicción GLM")
+plt.xlabel("Tasa de desempleo (%)")
+plt.ylabel("Morosidad (proporción)")
+plt.legend()
+plt.title("Modelo Lineal Generalizado: Morosidad vs. Desempleo")
+plt.show()
+
