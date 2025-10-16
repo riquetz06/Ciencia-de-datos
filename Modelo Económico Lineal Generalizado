@@ -1,48 +1,69 @@
+# ============================================
+# 📊 MODELO LINEAL GENERALIZADO (GLM)
+# Ejemplo económico con datos simulados
+# ============================================
+
 import pandas as pd
 import numpy as np
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+import matplotlib.pyplot as plt
 
-# Fijamos semilla para reproducibilidad
-np.random.seed(123)
+# -------------------------------------------------
+# 1️⃣ Simular base de datos macroeconómica
+# -------------------------------------------------
+np.random.seed(123)   # reproducibilidad
 
-# Simulamos datos macroeconómicos (n=100 trimestres)
-n = 100
+n = 100   # número de observaciones (trimestres)
 df = pd.DataFrame({
     "tasa_desempleo": np.random.uniform(3, 12, n),      # % de desempleo
     "inflacion": np.random.uniform(1, 8, n),            # % anual
     "crecimiento_PIB": np.random.normal(2, 1, n),       # % trimestral
 })
 
-# Generamos la variable dependiente: tasa de morosidad (proporción entre 0 y 1)
-# Usamos una función logística para simularla
+# Generar la variable dependiente: morosidad (proporción entre 0 y 1)
 log_odds = -2 + 0.25*df["tasa_desempleo"] + 0.15*df["inflacion"] - 0.30*df["crecimiento_PIB"]
 prob = 1 / (1 + np.exp(-log_odds))
 df["morosidad"] = prob + np.random.normal(0, 0.05, n)
-df["morosidad"] = df["morosidad"].clip(0, 1)
+df["morosidad"] = df["morosidad"].clip(0, 1)   # asegurar que esté entre 0 y 1
 
-df.head()
+# -------------------------------------------------
+# 2️⃣ Visualizar los primeros datos
+# -------------------------------------------------
+print("Vista previa de los datos simulados:\n")
+print(df.head())
 
-import statsmodels.api as sm
-import statsmodels.formula.api as smf
+# -------------------------------------------------
+# 3️⃣ Guardar base en Excel
+# -------------------------------------------------
+nombre_archivo = "GLM_economico.xlsx"
+df.to_excel(nombre_archivo, index=False)
+print(f"\n✅ Archivo guardado como: {nombre_archivo}")
 
-# Modelo GLM con familia binomial (logit link)
+# -------------------------------------------------
+# 4️⃣ Ajustar el modelo GLM
+# -------------------------------------------------
 modelo = smf.glm(
     formula="morosidad ~ tasa_desempleo + inflacion + crecimiento_PIB",
     data=df,
     family=sm.families.Binomial()
 ).fit()
 
+print("\n📈 Resumen del modelo GLM:\n")
 print(modelo.summary())
 
-import matplotlib.pyplot as plt
-
-# Predicciones del modelo
+# -------------------------------------------------
+# 5️⃣ Predicciones y visualización
+# -------------------------------------------------
 df["pred_morosidad"] = modelo.predict(df)
 
-plt.scatter(df["tasa_desempleo"], df["morosidad"], label="Datos reales")
-plt.plot(df["tasa_desempleo"], df["pred_morosidad"], color="red", label="Predicción GLM")
+plt.figure(figsize=(8,5))
+plt.scatter(df["tasa_desempleo"], df["morosidad"], label="Datos reales", alpha=0.7)
+plt.plot(df["tasa_desempleo"], df["pred_morosidad"], color="red", linewidth=2, label="Predicción GLM")
 plt.xlabel("Tasa de desempleo (%)")
 plt.ylabel("Morosidad (proporción)")
-plt.legend()
 plt.title("Modelo Lineal Generalizado: Morosidad vs. Desempleo")
+plt.legend()
+plt.grid(True, linestyle="--", alpha=0.6)
+plt.tight_layout()
 plt.show()
-
