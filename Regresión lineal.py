@@ -74,3 +74,15 @@ plt.xlabel("Valores ajustados")
 plt.ylabel("Residuos")
 plt.title("Residuos vs Ajustados")
 plt.show()
+
+plt.hist(modelo.resid, bins=30, edgecolor='black')
+plt.title('Histograma de Residuos')
+plt.xlabel('Residuos')
+plt.ylabel('Frecuencia')
+plt.show()
+
+import scipy.stats as stats
+
+sm.qqplot(modelo.resid, line='s')
+plt.title('Gráfico Q-Q de Residuos')
+plt.show()
