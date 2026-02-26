@@ -30,3 +30,8 @@ summary(modelo_RE)
 #Test Hausman
 
 phtest(modelo_FE, modelo_RE)
+
+#Visualizar datos
+
+data("Grunfeld")
+head(Grunfeld)
