@@ -1,0 +1,32 @@
+install.packages("plm")   # solo la primera vez
+library(plm)
+set.seed(123)
+empresa <- rep(1:10, each = 5)
+anio <- rep(2018:2022, times = 10)
+
+# efecto individual no observado (cada empresa es distinta)
+efecto_empresa <- rep(rnorm(10, 0, 2), each = 5)
+ebitda <- rnorm(50, 100, 20)
+
+# modelo verdadero (con correlación entre efecto y X)
+rendimiento <- 5 + 0.3*ebitda + efecto_empresa + rnorm(50, 0, 3)
+
+datos <- data.frame(empresa, anio, rendimiento, ebitda)
+
+datos_panel <- pdata.frame(datos, index = c("empresa", "anio"))
+
+modelo_FE <- plm(rendimiento ~ ebitda,
+                 data = datos_panel,
+                 model = "within")
+
+summary(modelo_FE)
+
+modelo_RE <- plm(rendimiento ~ ebitda,
+                 data = datos_panel,
+                 model = "random")
+
+summary(modelo_RE)
+
+#Test Hausman
+
+phtest(modelo_FE, modelo_RE)
