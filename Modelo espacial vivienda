@@ -1,0 +1,244 @@
+## ============================================================
+## Ejemplo: Econometría Espacial en R
+## Modelo SAR / SEM / SDM con datos simulados de vivienda
+## ============================================================
+
+# 0. Paquetes --------------------------------------------------
+pkgs <- c("sf", "spdep", "spatialreg", "ggplot2", "tmap",
+          "dplyr", "viridis", "patchwork", "lmtest")
+instalar <- pkgs[!pkgs %in% rownames(installed.packages())]
+if (length(instalar)) install.packages(instalar)
+lapply(pkgs, library, character.only = TRUE)
+
+
+# 1. Datos simulados -------------------------------------------
+set.seed(42)
+n  <- 100
+nx <- 10
+ny <- 10
+
+coords <- expand.grid(x = 1:nx, y = 1:ny)
+
+# Función corregida: byrow = TRUE explícito
+make_sq <- function(x0, y0) {
+  pts <- matrix(
+    c(x0,     y0,
+      x0 + 1, y0,
+      x0 + 1, y0 + 1,
+      x0,     y0 + 1,
+      x0,     y0),       # cierra el anillo
+    ncol  = 2,
+    byrow = TRUE
+  )
+  st_polygon(list(pts))
+}
+
+grid_sf <- st_sf(
+  id       = 1:n,
+  geometry = st_sfc(
+    lapply(1:n, function(i)
+      make_sq(coords$x[i] - 1, coords$y[i] - 1)),
+    crs = 4326
+  )
+)
+
+# Variables con estructura espacial
+cx <- (coords$x - nx / 2) / nx
+cy <- (coords$y - ny / 2) / ny
+
+# Ingreso: mayor en el centro
+ingreso <- 50 + 30 * exp(-2 * (cx^2 + cy^2)) + rnorm(n, 0, 3)
+
+# Accesibilidad: gradiente norte-sur
+accesib <- 10 + 5 * coords$y / ny + rnorm(n, 0, 1.5)
+
+# Precio base
+precio <- 80 + 2.5 * ingreso + 4 * accesib
+eps    <- rnorm(n, 0, 8)
+
+# Simular proceso SAR iterado (rho = 0.45)
+for (iter in 1:5) {
+  lag_p <- sapply(1:n, function(i) {
+    nb_idx <- which(
+      abs(coords$x - coords$x[i]) +
+      abs(coords$y - coords$y[i]) == 1
+    )
+    mean(precio[nb_idx])
+  })
+  precio <- 0.45 * lag_p +
+            0.55 * (80 + 2.5 * ingreso + 4 * accesib) +
+            eps / 5
+}
+
+grid_sf$precio  <- precio
+grid_sf$ingreso <- ingreso
+grid_sf$accesib <- accesib
+
+cat("\n── Resumen de variables ──\n")
+print(summary(st_drop_geometry(grid_sf[, c("precio", "ingreso", "accesib")])))
+
+
+# 2. Matriz de pesos espaciales --------------------------------
+nb_queen <- poly2nb(grid_sf, queen = TRUE)
+W        <- nb2listw(nb_queen, style = "W")
+
+cat("\n── Resumen de la matriz W ──\n")
+print(summary(W))
+
+
+# 3. Análisis Exploratorio Espacial (ESDA) --------------------
+
+## 3a. I de Moran global
+cat("\n── I de Moran global (precio) ──\n")
+moran_res <- moran.test(grid_sf$precio, W)
+print(moran_res)
+
+## 3b. Moran scatterplot
+moran.plot(
+  grid_sf$precio, W,
+  xlab = "Precio estandarizado",
+  ylab = "Lag espacial (W·precio)",
+  main = "Diagrama de dispersión de Moran"
+)
+
+## 3c. OLS base
+ols <- lm(precio ~ ingreso + accesib, data = grid_sf)
+cat("\n── OLS base ──\n")
+print(summary(ols))
+
+## 3d. Tests LM para selección de modelo
+cat("\n── Tests LM de dependencia espacial ──\n")
+lm_tests <- lm.LMtests(
+  ols, W,
+  test = c("LMlag", "LMerr", "RLMlag", "RLMerr", "SARMA")
+)
+print(summary(lm_tests))
+
+## 3e. LISA: I de Moran local
+lisa             <- localmoran(grid_sf$precio, W)
+grid_sf$lisa_I   <- lisa[, "Ii"]
+grid_sf$lisa_sig <- lisa[, "Pr(z != E(Ii))"] < 0.05
+
+z_precio <- scale(grid_sf$precio)[, 1]
+lag_z    <- lag.listw(W, z_precio)
+
+grid_sf$cluster <- dplyr::case_when(
+  z_precio > 0 & lag_z > 0 & grid_sf$lisa_sig ~ "HH",
+  z_precio < 0 & lag_z < 0 & grid_sf$lisa_sig ~ "LL",
+  z_precio > 0 & lag_z < 0 & grid_sf$lisa_sig ~ "HL",
+  z_precio < 0 & lag_z > 0 & grid_sf$lisa_sig ~ "LH",
+  TRUE                                          ~ "NS"
+)
+
+cat("\n── Distribución de clusters LISA ──\n")
+print(table(grid_sf$cluster))
+
+
+# 4. Modelos Espaciales ----------------------------------------
+
+## SAR: Y = rho·W·Y + X·beta + eps
+cat("\n── SAR (Spatial Autoregressive) ──\n")
+sar <- lagsarlm(precio ~ ingreso + accesib,
+                data  = grid_sf,
+                listw = W,
+                type  = "lag")
+print(summary(sar))
+cat("SAR — AIC:", AIC(sar), "| rho =", sar$rho, "\n")
+
+## SEM: Y = X·beta + u,  u = lambda·W·u + eps
+cat("\n── SEM (Spatial Error Model) ──\n")
+sem <- errorsarlm(precio ~ ingreso + accesib,
+                  data  = grid_sf,
+                  listw = W)
+print(summary(sem))
+cat("SEM — AIC:", AIC(sem), "| lambda =", sem$lambda, "\n")
+
+## SDM: Y = rho·W·Y + X·beta + W·X·gamma + eps
+cat("\n── SDM (Spatial Durbin Model) ──\n")
+sdm <- lagsarlm(precio ~ ingreso + accesib,
+                data  = grid_sf,
+                listw = W,
+                type  = "Durbin")
+print(summary(sdm))
+cat("SDM — AIC:", AIC(sdm), "| rho =", sdm$rho, "\n")
+
+## Tabla comparativa AIC
+aic_tab <- data.frame(
+  Modelo = c("OLS", "SAR", "SEM", "SDM"),
+  AIC    = c(AIC(ols), AIC(sar), AIC(sem), AIC(sdm))
+)
+cat("\n── Comparación AIC (menor = mejor) ──\n")
+print(aic_tab[order(aic_tab$AIC), ])
+
+## Efectos directos, indirectos y totales (SDM)
+cat("\n── Efectos directos / indirectos / totales (SDM) ──\n")
+impacts_sdm <- impacts(sdm, listw = W, R = 500)
+print(summary(impacts_sdm, zstats = TRUE, short = TRUE))
+
+## Residuos del SAR y test de Moran
+grid_sf$res_sar <- residuals(sar)
+cat("\n── Moran sobre residuos SAR (debe ser no significativo) ──\n")
+print(moran.test(grid_sf$res_sar, W))
+
+## Lag espacial del precio
+grid_sf$w_precio <- lag.listw(W, grid_sf$precio)
+
+
+# 5. Mapas con ggplot2 + patchwork ----------------------------
+
+## Mapa 1: Precio de vivienda
+p1 <- ggplot(grid_sf) +
+  geom_sf(aes(fill = precio), color = "white", linewidth = 0.1) +
+  scale_fill_viridis(option = "magma", name = "Precio") +
+  labs(title = "Precio de vivienda") +
+  theme_void(base_size = 11)
+
+## Mapa 2: Clusters LISA
+cols_lisa <- c(HH = "#c0392b", LL = "#2980b9",
+               HL = "#e74c3c", LH = "#7fb3d3", NS = "#e0e0e0")
+
+p2 <- ggplot(grid_sf) +
+  geom_sf(aes(fill = cluster), color = "white", linewidth = 0.1) +
+  scale_fill_manual(values = cols_lisa, name = "Cluster\nLISA") +
+  labs(title = "Clusters LISA (α = 0.05)") +
+  theme_void(base_size = 11)
+
+## Mapa 3: Residuos SAR
+p3 <- ggplot(grid_sf) +
+  geom_sf(aes(fill = res_sar), color = "white", linewidth = 0.1) +
+  scale_fill_gradient2(
+    low      = "#2166ac",
+    mid      = "white",
+    high     = "#d73027",
+    midpoint = 0,
+    name     = "Residuo"
+  ) +
+  labs(title = "Residuos modelo SAR") +
+  theme_void(base_size = 11)
+
+## Mapa 4: Lag espacial W·Y
+p4 <- ggplot(grid_sf) +
+  geom_sf(aes(fill = w_precio), color = "white", linewidth = 0.1) +
+  scale_fill_viridis(option = "cividis", name = "W·Precio") +
+  labs(title = "Lag espacial (W·Y)") +
+  theme_void(base_size = 11)
+
+## Panel 2x2
+(p1 | p2) / (p3 | p4) +
+  plot_annotation(
+    title   = "Econometría Espacial — Mercado de Vivienda",
+    caption = "Datos simulados · rho_SAR ≈ 0.45"
+  )
+
+
+# 6. Mapa interactivo con tmap --------------------------------
+tmap_mode("view")   # modo Leaflet interactivo
+
+tm_shape(grid_sf) +
+  tm_polygons(
+    col        = "precio",
+    palette    = "YlOrRd",
+    title      = "Precio vivienda",
+    popup.vars = c("precio", "ingreso", "accesib", "cluster")
+  ) +
+  tm_layout(title = "Mapa interactivo — precio de vivienda")
