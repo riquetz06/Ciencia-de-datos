@@ -25,6 +25,24 @@ num_hijos = np.random.randint(0, 5, size=n)
 # Gaussiano: Consumo anual
 consumo = 5000 + 0.6*ingreso + 200*edad + np.random.normal(0, 5000, n)
 
+df = pd.DataFrame({
+    'edad': edad,
+    'ingreso': ingreso,
+    'educacion': educacion,
+    'num_hijos': num_hijos,
+    'consumo': consumo
+})
+
+# Definir variables independientes (con constante) y variable dependiente
+X = sm.add_constant(df[['ingreso', 'edad']])
+y = df['consumo']
+
+# Ajustar el modelo de regresión lineal (MCO / OLS)
+modelo_gaussiano = sm.OLS(y, X).fit()
+
+# Mostrar el resumen estadístico
+print(modelo_gaussiano.summary())
+
 # Logístico: Probabilidad de desempleo
 logit_prob = 1 / (1 + np.exp(-(1 - 0.05*edad - 0.5*educacion)))
 desempleo = np.random.binomial(1, logit_prob)
